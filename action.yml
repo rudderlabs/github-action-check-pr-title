@@ -7,7 +7,8 @@ runs:
       with:
         node-version: 16
         cache: 'npm'
-    - run: npm ci
-      shell: bash
-    - run: node ${{ github.action_path }}/index.js
+    - run: |
+        cd ${{ github.action_path }}
+        npm ci
+        node index.js
       shell: bash
