@@ -1,0 +1,5 @@
+name: 'Pull Request conventional commit title rules'
+description: 'Github action to enforce Pull Request title conventional commit syntax'
+runs:
+  using: 'node16'
+  main: 'index.js'
