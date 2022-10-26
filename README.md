@@ -14,5 +14,5 @@ No outputs.
 
 ```yaml
 - name: Check PR title
-  uses: rudderlabs/github-action-check-pr-title@v1.0.5
+  uses: rudderlabs/github-action-check-pr-title@v1.0.6
 ```
