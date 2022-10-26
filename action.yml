@@ -7,7 +7,6 @@ runs:
       with:
         node-version: 16
         cache: 'npm'
-        cache-dependency-path: ${{ github.action_path }}/package-lock.json
 
     - run: |
         cd ${{ github.action_path }}
