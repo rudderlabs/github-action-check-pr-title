@@ -9,7 +9,10 @@ async function run() {
   const report = await lint(title, config.rules);
 
   if (!report.valid) {
-    console.log(report);
+    console.log('Errors')
+    console.log(report.errors);
+    console.log('Warnings')
+    console.log(report.warnings);
     process.exit(1);
   }
 }
