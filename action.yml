@@ -12,5 +12,5 @@ runs:
     - run: |
         cd ${{ github.action_path }}
         npm ci
-        node index.js
+        node index.mjs
       shell: bash
