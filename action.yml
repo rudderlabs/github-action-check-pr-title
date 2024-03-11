@@ -1,11 +1,13 @@
 name: 'Pull Request conventional commit title rules'
-description: 'Github action to enforce Pull Request title conventional commit syntax'
+description: 'GitHub action to enforce Pull Request title conventional commit syntax'
 runs:
   using: "composite"
   steps:
-    - uses: actions/setup-node@v3
+    - name: Setup Node
+      uses: actions/setup-node@v4
       with:
-        node-version: 16
+        node-version-file: '.nvmrc'
+        cache: 'npm'
 
     - run: |
         cd ${{ github.action_path }}
