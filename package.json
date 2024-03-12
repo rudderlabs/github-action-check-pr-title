@@ -1,6 +1,6 @@
 {
   "name": "github-action-check-pr-title",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "description": "GitHub action to enforce conventional commit syntax convention on Pull Request titles",
   "main": "index.mjs",
   "scripts": {
