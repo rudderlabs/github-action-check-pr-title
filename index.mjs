@@ -1,12 +1,11 @@
 import { context } from '@actions/github';
-import lint from '@commitlint/lint';
-import configConventional from '@commitlint/config-conventional';
+import { lintTitle } from './lint-title.mjs';
 
 async function run() {
   const title = context.payload.pull_request.title;
   console.log(`Checking PR title: '${title}'`);
 
-  const report = await lint(title, configConventional.rules);
+  const report = await lintTitle(title);
 
   if (!report.valid) {
     console.log('Errors');
