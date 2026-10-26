@@ -13,6 +13,8 @@ These authors skip the check:
 A label or an input cannot turn the skip on, because GitHub sets the author type.
 The check enforces a title format. It is not a security control, so these gaps are acceptable.
 
+On a `merge_group` event the action passes with a log line. That event carries no pull request title, and the title was checked when the pull request was opened.
+
 ## Inputs
 
 No inputs.

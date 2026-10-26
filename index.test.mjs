@@ -8,14 +8,19 @@ import test from 'node:test';
 const longTitle =
   'chore(deps): bump langgraph-checkpoint-sqlite from 3.1.1 to 3.1.2 in /examples/langgraph-checkpoint in the pip group across 1 directory';
 
-function runAction(pullRequest) {
+function runAction(pullRequest, eventName = 'pull_request') {
+  const payload = pullRequest ? { pull_request: pullRequest } : { merge_group: { head_sha: 'abc' } };
+  return runEvent(eventName, payload);
+}
+
+function runEvent(eventName, payload) {
   const dir = mkdtempSync(join(tmpdir(), 'check-pr-title-'));
   const eventPath = join(dir, 'event.json');
-  writeFileSync(eventPath, JSON.stringify({ pull_request: pullRequest }));
+  writeFileSync(eventPath, JSON.stringify(payload));
 
   return spawnSync(process.execPath, ['index.mjs'], {
     cwd: import.meta.dirname,
-    env: { ...process.env, GITHUB_EVENT_PATH: eventPath },
+    env: { ...process.env, GITHUB_EVENT_NAME: eventName, GITHUB_EVENT_PATH: eventPath },
     encoding: 'utf8',
   });
 }
@@ -32,4 +37,19 @@ test('fails the same title from a person', () => {
 
   assert.equal(result.status, 1, result.stdout + result.stderr);
   assert.match(result.stdout, /header-max-length/);
+});
+
+test('passes a merge_group event, which has no pull request', () => {
+  const result = runAction(undefined, 'merge_group');
+
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /Skipping: a merge_group event has no pull request title/);
+});
+
+test('fails with a clear message on an event without a pull request', () => {
+  const result = runEvent('push', { ref: 'refs/heads/main' });
+
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  assert.match(result.stdout, /the 'push' event has no pull request/);
+  assert.doesNotMatch(result.stderr, /TypeError/);
 });
