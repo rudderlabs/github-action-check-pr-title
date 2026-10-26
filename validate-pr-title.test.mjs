@@ -421,6 +421,10 @@ describe('commit messages', () => {
     await assertRejects('   ', undefined, 'No release type found in pull request title "".');
   });
 
+  test('reports a broken headerPattern instead of a missing type', async () => {
+    await assert.rejects(validatePrTitle('fix: done', { headerPattern: '[' }), SyntaxError);
+  });
+
   test('counts the length limit in code points', async () => {
     await validatePrTitle(`fix: ${'\u{1F600}'.repeat(498)}`);
   });
