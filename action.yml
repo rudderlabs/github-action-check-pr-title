@@ -55,6 +55,6 @@ outputs:
   subject:
     description: 'The subject parsed from the PR title. Not set when the check is skipped.'
   breaking:
-    description: '`true` when the title marks a breaking change with `!`, otherwise `false`. Not set when the check is skipped.'
+    description: '`true` when the title marks a breaking change with `!`, otherwise `false`. Always `false` with a custom `headerPattern`. Not set when the check is skipped.'
   error_message:
     description: 'The validation error, set when the title fails.'

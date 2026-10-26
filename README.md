@@ -77,7 +77,7 @@ All inputs are optional. Lists are newline-delimited, and list entries are regex
 | Output | Description |
 | --- | --- |
 | `type`, `scope`, `subject` | Parsed from the title. Not set when the check is skipped. |
-| `breaking` | `true` when the title marks a breaking change with `!`. Not in amannn. |
+| `breaking` | `true` when the title marks a breaking change with `!`. Always `false` with a custom `headerPattern`. Not in amannn. |
 | `error_message` | Set when the title fails. |
 
 ## Example usage

@@ -16,7 +16,8 @@ export function formatMessage(message, values) {
   let formatted = message;
   if (values) {
     for (const [key, value] of Object.entries(values)) {
-      formatted = formatted.replace(new RegExp(`{${key}}`, 'g'), value);
+      // A callback keeps `$&` and similar sequences in the value literal.
+      formatted = formatted.replace(new RegExp(`{${key}}`, 'g'), () => value);
     }
   }
   return formatted;
@@ -37,6 +38,8 @@ export async function validatePrTitle(prTitle, options = {}) {
   const { parser: parserOpts } = await conventionalCommitsConfig();
   if (headerPattern) {
     parserOpts.headerPattern = headerPattern;
+    // The parser tries the preset's breaking pattern first, which would bypass the custom one.
+    delete parserOpts.breakingHeaderPattern;
   }
   if (headerPatternCorrespondence) {
     parserOpts.headerCorrespondence = headerPatternCorrespondence;

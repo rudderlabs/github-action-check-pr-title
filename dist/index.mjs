@@ -25640,7 +25640,7 @@ function formatMessage(message, values) {
   let formatted = message;
   if (values) {
     for (const [key, value] of Object.entries(values)) {
-      formatted = formatted.replace(new RegExp(`{${key}}`, "g"), value);
+      formatted = formatted.replace(new RegExp(`{${key}}`, "g"), () => value);
     }
   }
   return formatted;
@@ -25657,6 +25657,7 @@ async function validatePrTitle(prTitle, options = {}) {
   const { parser: parserOpts } = await createPreset();
   if (headerPattern) {
     parserOpts.headerPattern = headerPattern;
+    delete parserOpts.breakingHeaderPattern;
   }
   if (headerPatternCorrespondence) {
     parserOpts.headerCorrespondence = headerPatternCorrespondence;

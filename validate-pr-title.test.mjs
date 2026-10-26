@@ -76,6 +76,12 @@ describe('regex types', () => {
     );
   });
 
+  test('parses a breaking title with the custom headerPattern, not the preset', async () => {
+    const options = { headerPattern: '^(\\w+)!?: (.*)$', headerPatternCorrespondence: ['type', 'subject'] };
+    await validatePrTitle('feat: remove v1', options);
+    await validatePrTitle('feat!: remove v1', options);
+  });
+
   test('allows scopes when using a regex for the type', async () => {
     await validatePrTitle('JIRA-123(core): Bar', { types, headerPattern });
   });
@@ -276,6 +282,10 @@ describe('description validation', () => {
 describe('formatMessage', () => {
   test('handles a string without variables', () => {
     assert.equal(formatMessage('this is test'), 'this is test');
+  });
+
+  test('inserts dollar sequences literally', () => {
+    assert.equal(formatMessage('Invalid subject: {subject}', { subject: "update $& and $' handling" }), "Invalid subject: update $& and $' handling");
   });
 
   test('replaces multiple variables and instances', () => {
