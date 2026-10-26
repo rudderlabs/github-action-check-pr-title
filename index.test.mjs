@@ -427,6 +427,16 @@ describe('with a token, from the GitHub API', () => {
     assert.ok(api.requests.some(({ route }) => route.endsWith('/commits?page=2')), 'did not read the second page of commits');
   });
 
+  test('matches a single commit with a leading blank line against the title', async () => {
+    const result = await runWithApi({
+      pullRequest: pullRequest({ title: 'fix: done' }),
+      commits: [commit('\nfix: done')],
+      inputs: { VALIDATESINGLECOMMIT: 'true', VALIDATESINGLECOMMITMATCHESPRTITLE: 'true' },
+    });
+
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+  });
+
   test('names the length limit when the single commit header is too long', async () => {
     const result = await runWithApi({
       pullRequest: pullRequest({ title: 'fix: done' }),

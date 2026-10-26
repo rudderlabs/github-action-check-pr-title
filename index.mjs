@@ -4,7 +4,7 @@ import * as core from '@actions/core';
 import * as github from '@actions/github';
 
 import { parseConfig } from './parse-config.mjs';
-import { HEADER_TOO_LONG, isBotPullRequest, MAX_HEADER_LENGTH, validatePrTitle } from './validate-pr-title.mjs';
+import { HEADER_TOO_LONG, headerOf, isBotPullRequest, MAX_HEADER_LENGTH, validatePrTitle } from './validate-pr-title.mjs';
 
 async function run() {
   try {
@@ -144,7 +144,8 @@ async function run() {
             }
 
             if (validateSingleCommitMatchesPrTitle) {
-              const commitTitle = nonMergeCommits[0].commit.message.split(/\r?\n/)[0];
+              // The same header that validation read, so blank leading lines do not count.
+              const commitTitle = headerOf(nonMergeCommits[0].commit.message);
               if (commitTitle !== pullRequest.title) {
                 throw new Error(
                   `The pull request has only one (non-merge) commit and in this case Github will use it as the default commit message when merging. The pull request title doesn't match the commit though ("${pullRequest.title}" vs. "${commitTitle}"). Please update the pull request title accordingly to avoid surprises.`,
