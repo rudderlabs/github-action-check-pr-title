@@ -104,6 +104,21 @@ describe('without a token, from the event payload', () => {
     assert.match(result.output, /breaking<<.*\ntrue\n/);
   });
 
+  test('escapes workflow commands in the logged title', async () => {
+    const result = await runAction({ payload: { pull_request: pullRequest({ title: 'fix: x ##[group]y' }) } });
+
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.match(result.stdout, /Checking PR title: 'fix: x #\u200B#\[group\]y'/);
+    assert.doesNotMatch(result.stdout, /##\[/);
+  });
+
+  test('escapes workflow commands in the failure message', async () => {
+    const result = await runAction({ payload: { pull_request: pullRequest({ title: 'wip ##[group]y' }) } });
+
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.doesNotMatch(result.stdout, /##\[/);
+  });
+
   test('skips validation when the pull request carries an ignored label', async () => {
     const result = await runAction({
       payload: { pull_request: pullRequest({ title: 'Bump follow-redirects', labels: [{ name: 'dependencies' }] }) },
