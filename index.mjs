@@ -1,9 +1,15 @@
 import { context } from '@actions/github';
-import { lintTitle } from './lint-title.mjs';
+import { isBotPullRequest, lintTitle } from './lint-title.mjs';
 
 async function run() {
-  const title = context.payload.pull_request.title;
+  const pullRequest = context.payload.pull_request;
+  const title = pullRequest.title;
   console.log(`Checking PR title: '${title}'`);
+
+  if (isBotPullRequest(pullRequest)) {
+    console.log(`Skipping: the author ${pullRequest.user.login} is a bot.`);
+    return;
+  }
 
   const report = await lintTitle(title);
 
