@@ -1,7 +1,22 @@
 # PR title conventional commit syntax check action
 
-Check PR title against conventional commit standards and display any rule violations.
-Using the default rule preset of [@commitlint/config-conventional](https://www.npmjs.com/package/@commitlint/config-conventional)
+Checks the PR title against the [Conventional Commits](https://www.conventionalcommits.org/) spec.
+
+The action is a drop-in replacement for [amannn/action-semantic-pull-request](https://github.com/amannn/action-semantic-pull-request) v6.
+It takes the same inputs, sets the same outputs, applies the same rules and reports the same messages.
+It adds a `githubToken` input, a `breaking` output and support for GitHub's revert titles.
+To switch, change only the `uses:` line.
+
+## Rules
+
+With no inputs, the title must be `type(scope)!: subject`, where the scope and `!` are optional.
+The type must be one of `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore` or `revert`.
+The action does not check length or case. Use `subjectPattern` for case rules.
+
+A title written by GitHub's Revert button, `Revert "<title>"`, passes when the quoted title passes.
+amannn fails these titles.
+
+## Skips
 
 The action skips a pull request when GitHub reports the author type as `Bot`.
 These authors skip the check:
@@ -12,6 +27,7 @@ These authors skip the check:
 
 A label or an input cannot turn the skip on, because GitHub sets the author type.
 The check enforces a title format. It is not a security control, so these gaps are acceptable.
+To skip by label instead, use `ignoreLabels`.
 
 On a `merge_group` event the action always passes with a log line, because that event carries no pull request title.
 The merge queue then relies on the `pull_request` run. Run the check on the `edited` type too, so a renamed title is checked again:
@@ -23,17 +39,69 @@ on:
   merge_group:
 ```
 
+## Token
+
+Pass `GITHUB_TOKEN` in `env`, or the `githubToken` input, to read the current title from the API.
+The environment variable wins when both are set.
+Without it the action reads the title from the event payload, which is stale when someone retitles the pull request and re-runs the job.
+`wip` and `validateSingleCommit` call the API, so they need the token.
+
+| Option | Permission |
+| --- | --- |
+| any | `pull-requests: read` |
+| `wip` | `statuses: write` |
+
 ## Inputs
 
-No inputs.
+All inputs are optional. Lists are newline-delimited, and list entries are regex patterns wrapped in `^ $`.
+
+| Input | Description |
+| --- | --- |
+| `types` | Allowed types. Defaults to the list in [Rules](#rules). |
+| `scopes` | Allowed scopes. Any scope is allowed by default. |
+| `requireScope` | `true` to require a scope. |
+| `disallowScopes` | Scopes that are not allowed. |
+| `subjectPattern` | Regex the whole subject must match, e.g. `^(?![A-Z]).+$` rejects an uppercase first letter. |
+| `subjectPatternError` | Message when `subjectPattern` fails. `{subject}` and `{title}` are replaced. |
+| `headerPattern` | Custom header regex. See [headerPattern](https://github.com/conventional-changelog/conventional-changelog/tree/master/packages/conventional-commits-parser#headerpattern). |
+| `headerPatternCorrespondence` | Comma-separated names of the `headerPattern` groups, e.g. `type, scope, subject`. |
+| `wip` | `true` to skip titles that start with `[WIP] ` and report a pending `action-semantic-pull-request` status. |
+| `validateSingleCommit` | `true` to also validate the commit message when the pull request has one non-merge commit, because GitHub squashes with that message. |
+| `validateSingleCommitMatchesPrTitle` | With `validateSingleCommit`, `true` to require that commit's title to equal the PR title. |
+| `ignoreLabels` | Labels that skip the check. Add the `labeled` and `unlabeled` triggers to re-run on label changes. |
+| `githubBaseUrl` | API URL. Defaults to `github.api_url`. |
+| `githubToken` | API token, as an alternative to the `GITHUB_TOKEN` environment variable. Not in amannn. |
 
 ## Outputs
 
-No outputs.
+| Output | Description |
+| --- | --- |
+| `type`, `scope`, `subject` | Parsed from the title. Not set when the check is skipped. |
+| `breaking` | `true` when the title marks a breaking change with `!`. Not in amannn. |
+| `error_message` | Set when the title fails. |
 
 ## Example usage
 
 ```yaml
-- name: Check PR title
-  uses: rudderlabs/github-action-check-pr-title@v1.0.7
+permissions:
+  pull-requests: read
+
+steps:
+  - name: Check PR title
+    uses: rudderlabs/github-action-check-pr-title@<sha> # v2.0.0
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    with:
+      types: |
+        fix
+        feat
+        chore
+      subjectPattern: ^(?![A-Z]).+$
+      ignoreLabels: |
+        bot
+        dependencies
 ```
+
+## Development
+
+The action runs `dist/index.mjs`. After changing the source, run `npm run build` and commit `dist/`. CI fails when `dist/` is stale.
