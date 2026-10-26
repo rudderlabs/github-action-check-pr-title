@@ -456,6 +456,11 @@ describe('commit messages', () => {
     await assert.rejects(validatePrTitle('fix: done', { headerPattern: '[' }), SyntaxError);
   });
 
+  test('allows exactly 1000 code points and rejects 1001', async () => {
+    await validatePrTitle(`fix: ${'\u{1F600}'.repeat(995)}`);
+    await assert.rejects(validatePrTitle(`fix: ${'\u{1F600}'.repeat(996)}`), { code: HEADER_TOO_LONG });
+  });
+
   test('counts the length limit in code points', async () => {
     await validatePrTitle(`fix: ${'\u{1F600}'.repeat(498)}`);
   });
