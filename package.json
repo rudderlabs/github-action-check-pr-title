@@ -1,17 +1,20 @@
 {
   "name": "github-action-check-pr-title",
-  "version": "1.0.13",
+  "version": "2.0.0",
   "description": "GitHub action to enforce conventional commit syntax convention on Pull Request titles",
   "main": "index.mjs",
   "scripts": {
     "start": "node index.mjs",
-    "test": "node --test"
+    "test": "node --test",
+    "build": "esbuild index.mjs --bundle --platform=node --format=esm --target=node24 --outfile=dist/index.mjs --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\""
   },
   "license": "MIT",
   "devDependencies": {
-    "@actions/github": "6.0.0",
-    "@commitlint/lint": "19.0.3",
-    "@commitlint/config-conventional": "19.0.3",
-    "conventional-changelog-conventionalcommits": "7.0.2"
+    "@actions/core": "3.0.1",
+    "@actions/github": "9.1.1",
+    "conventional-changelog-conventionalcommits": "10.4.1",
+    "conventional-commit-types": "3.0.0",
+    "conventional-commits-parser": "7.1.3",
+    "esbuild": "0.28.2"
   }
 }
