@@ -25633,6 +25633,9 @@ var CommitParser = class {
 
 // validate-pr-title.mjs
 var defaultTypes = Object.keys(conventional_commit_types_default.types);
+function matchesWhole(pattern, value) {
+  return new RegExp(`^(?:${pattern})$`).test(value);
+}
 function formatMessage(message, values) {
   let formatted = message;
   if (values) {
@@ -25674,10 +25677,10 @@ ${types.map((type) => {
     }).join("\n")}`;
   }
   function isUnknownScope(s) {
-    return scopes && !scopes.some((scope) => new RegExp(`^${scope}$`).test(s));
+    return scopes && !scopes.some((scope) => matchesWhole(scope, s));
   }
   function isDisallowedScope(s) {
-    return disallowScopes && disallowScopes.some((scope) => new RegExp(`^${scope}$`).test(s));
+    return disallowScopes && disallowScopes.some((scope) => matchesWhole(scope, s));
   }
   if (!result.type) {
     raiseError(
@@ -25689,7 +25692,7 @@ ${printAvailableTypes()}`
   if (!result.subject) {
     raiseError(`No subject found in pull request title "${prTitle}".`);
   }
-  if (!types.some((type) => new RegExp(`^${type}$`).test(result.type))) {
+  if (!types.some((type) => matchesWhole(type, result.type))) {
     raiseError(`Unknown release type "${result.type}" found in pull request title "${prTitle}".
 
 ${printAvailableTypes()}`);

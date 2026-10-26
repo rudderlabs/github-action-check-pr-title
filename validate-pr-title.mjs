@@ -7,6 +7,11 @@ import { CommitParser } from 'conventional-commits-parser';
 
 const defaultTypes = Object.keys(conventionalCommitTypes.types);
 
+// The group keeps `feat|fix` from matching `feature`; amannn anchors without it.
+function matchesWhole(pattern, value) {
+  return new RegExp(`^(?:${pattern})$`).test(value);
+}
+
 export function formatMessage(message, values) {
   let formatted = message;
   if (values) {
@@ -57,11 +62,11 @@ export async function validatePrTitle(prTitle, options = {}) {
   }
 
   function isUnknownScope(s) {
-    return scopes && !scopes.some((scope) => new RegExp(`^${scope}$`).test(s));
+    return scopes && !scopes.some((scope) => matchesWhole(scope, s));
   }
 
   function isDisallowedScope(s) {
-    return disallowScopes && disallowScopes.some((scope) => new RegExp(`^${scope}$`).test(s));
+    return disallowScopes && disallowScopes.some((scope) => matchesWhole(scope, s));
   }
 
   if (!result.type) {
@@ -74,7 +79,7 @@ export async function validatePrTitle(prTitle, options = {}) {
     raiseError(`No subject found in pull request title "${prTitle}".`);
   }
 
-  if (!types.some((type) => new RegExp(`^${type}$`).test(result.type))) {
+  if (!types.some((type) => matchesWhole(type, result.type))) {
     raiseError(`Unknown release type "${result.type}" found in pull request title "${prTitle}".\n\n${printAvailableTypes()}`);
   }
 

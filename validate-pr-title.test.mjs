@@ -300,6 +300,21 @@ describe('rudderlabs titles', () => {
   });
 });
 
+describe('patterns with alternation match as a whole', () => {
+  test('rejects a type that only starts with an alternative', async () => {
+    await assertRejects('feature: x', { types: ['feat|fix'] }, 'Unknown release type "feature"');
+    await validatePrTitle('fix: x', { types: ['feat|fix'] });
+  });
+
+  test('rejects a scope that only starts with an alternative', async () => {
+    await assertRejects('fix(core-extra): x', { scopes: ['core|web'] }, 'Unknown scope "core-extra"');
+  });
+
+  test('allows a scope that only starts with a disallowed alternative', async () => {
+    await validatePrTitle('fix(release-tools): x', { disallowScopes: ['release|admin'] });
+  });
+});
+
 describe('GitHub revert titles', () => {
   test('accepts the title the Revert button writes when the quoted title is valid', async () => {
     await validatePrTitle('Revert "feat(api): add retries"');
