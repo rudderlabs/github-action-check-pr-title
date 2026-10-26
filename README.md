@@ -11,7 +11,8 @@ To switch, change only the `uses:` line.
 
 With no inputs, the title must be `type(scope)!: subject`, where the scope and `!` are optional.
 The type must be one of `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore` or `revert`.
-The action does not check length or case. Use `subjectPattern` for case rules.
+The action does not check case. Use `subjectPattern` for case rules.
+A header longer than 1000 characters fails. GitHub caps a PR title at 256 characters, so the limit affects only the commit that `validateSingleCommit` checks.
 
 A title written by GitHub's Revert button, `Revert "<title>"`, passes when the quoted title passes.
 amannn fails these titles.
