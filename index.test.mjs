@@ -331,6 +331,27 @@ describe('with a token, from the GitHub API', () => {
     assert.equal(result.status, 0, result.stdout + result.stderr);
   });
 
+  test('matches a single CRLF commit against the pull request title', async () => {
+    const result = await runWithApi({
+      pullRequest: pullRequest({ title: 'fix: done' }),
+      commits: [commit('fix: done\r\n\r\nbody')],
+      inputs: { VALIDATESINGLECOMMIT: 'true', VALIDATESINGLECOMMITMATCHESPRTITLE: 'true' },
+    });
+
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+  });
+
+  test('names the length limit when the single commit header is too long', async () => {
+    const result = await runWithApi({
+      pullRequest: pullRequest({ title: 'fix: done' }),
+      commits: [commit(`fix: ${'a'.repeat(1000)}`)],
+      inputs: { VALIDATESINGLECOMMIT: 'true' },
+    });
+
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(result.stdout, /its commit header is longer than 1000 characters/);
+  });
+
   test('ignores the commit when the pull request has two non-merge commits', async () => {
     const result = await runWithApi({
       pullRequest: pullRequest({ title: 'fix: done' }),

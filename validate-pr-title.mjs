@@ -25,23 +25,33 @@ export function formatMessage(message, values) {
 
 // GitHub caps a PR title at 256 characters. A commit header has no cap.
 export const MAX_HEADER_LENGTH = 1000;
+export const HEADER_TOO_LONG = 'HEADER_TOO_LONG';
+
+// The parser takes the first non-blank line that is not GPG output. When every
+// line is GPG output, the first one stays, so the error message can name it.
+function headerOf(message) {
+  const lines = message.split(/\r?\n/).filter((line) => line.trim());
+  return lines.find((line) => !/^\s*gpg:/.test(line)) ?? lines[0] ?? '';
+}
+
+// The limit counts code points. Two UTF-16 units per code point is the most, so
+// a longer string needs no count.
+function isTooLong(header) {
+  if (header.length <= MAX_HEADER_LENGTH) return false;
+  return header.length > 2 * MAX_HEADER_LENGTH || [...header].length > MAX_HEADER_LENGTH;
+}
 
 export async function validatePrTitle(message, options = {}) {
   // The checks read only the header. Parse time grows faster than linear with
   // input length, so the parser never sees the body or an unbounded header.
-  // Like the parser, the header is the first line after leading blank lines that is not GPG output.
-  const prTitle =
-    message
-      .replace(/^[\r\n]+/, '')
-      .split(/\r?\n/)
-      .find((line) => !/^\s*gpg:/.test(line)) ?? '';
+  const prTitle = headerOf(message);
   const { scopes, requireScope, disallowScopes, subjectPattern, subjectPatternError, headerPattern, headerPatternCorrespondence, setOutputs = true } =
     options;
   const types = options.types || defaultTypes;
   const setOutput = setOutputs ? core.setOutput : () => {};
 
-  if (prTitle.length > MAX_HEADER_LENGTH) {
-    raiseError(`The title is longer than ${MAX_HEADER_LENGTH} characters.`);
+  if (isTooLong(prTitle)) {
+    raiseError(`The title is longer than ${MAX_HEADER_LENGTH} characters.`, HEADER_TOO_LONG);
   }
 
   // GitHub's Revert button titles the pull request `Revert "<original title>"` (amannn#278).
@@ -61,7 +71,13 @@ export async function validatePrTitle(message, options = {}) {
   if (headerPatternCorrespondence) {
     parserOpts.headerCorrespondence = headerPatternCorrespondence;
   }
-  const result = new CommitParser(parserOpts).parse(prTitle);
+  let result;
+  try {
+    result = new CommitParser(parserOpts).parse(prTitle);
+  } catch {
+    // The parser throws on a blank message. The checks below report it as a title with no type.
+    result = { type: null, scope: null, subject: null, notes: [] };
+  }
 
   setOutput('type', result.type);
   setOutput('scope', result.scope);
@@ -149,9 +165,9 @@ export async function validatePrTitle(message, options = {}) {
     }
   }
 
-  function raiseError(message) {
+  function raiseError(message, code) {
     setOutput('error_message', message);
-    throw new Error(message);
+    throw Object.assign(new Error(message), code && { code });
   }
 }
 

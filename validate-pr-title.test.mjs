@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { Worker } from 'node:worker_threads';
 
-import { formatMessage, isBotPullRequest, MAX_HEADER_LENGTH, validatePrTitle } from './validate-pr-title.mjs';
+import { formatMessage, HEADER_TOO_LONG, isBotPullRequest, MAX_HEADER_LENGTH, validatePrTitle } from './validate-pr-title.mjs';
 
 // Ported from amannn/action-semantic-pull-request so the two actions agree on every title.
 
@@ -406,6 +406,27 @@ describe('commit messages', () => {
   test('validates only the header line', async () => {
     await validatePrTitle('\nfix: done\r\nnot a conventional line');
     await assertRejects('wip\n\nfix: done', undefined, 'No release type found in pull request title "wip".');
+  });
+
+  test('skips blank and whitespace-only lines before the header', async () => {
+    await validatePrTitle('   \nfix: done');
+    await validatePrTitle('\t\nfix: done');
+  });
+
+  test('reports a title that is only GPG output as a title with no type', async () => {
+    await assertRejects('gpg: rotate key', undefined, 'No release type found in pull request title "gpg: rotate key".');
+  });
+
+  test('reports a blank message as a title with no type', async () => {
+    await assertRejects('   ', undefined, 'No release type found in pull request title "".');
+  });
+
+  test('counts the length limit in code points', async () => {
+    await validatePrTitle(`fix: ${'\u{1F600}'.repeat(498)}`);
+  });
+
+  test('marks an over-long header with an error code', async () => {
+    await assert.rejects(validatePrTitle(`fix: ${'a'.repeat(MAX_HEADER_LENGTH)}`), { code: HEADER_TOO_LONG });
   });
 
   test('skips GPG output before the header, as the parser does', async () => {

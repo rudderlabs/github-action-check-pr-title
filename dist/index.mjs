@@ -25646,14 +25646,23 @@ function formatMessage(message, values) {
   return formatted;
 }
 var MAX_HEADER_LENGTH = 1e3;
+var HEADER_TOO_LONG = "HEADER_TOO_LONG";
+function headerOf(message) {
+  const lines = message.split(/\r?\n/).filter((line) => line.trim());
+  return lines.find((line) => !/^\s*gpg:/.test(line)) ?? lines[0] ?? "";
+}
+function isTooLong(header) {
+  if (header.length <= MAX_HEADER_LENGTH) return false;
+  return header.length > 2 * MAX_HEADER_LENGTH || [...header].length > MAX_HEADER_LENGTH;
+}
 async function validatePrTitle(message, options = {}) {
-  const prTitle = message.replace(/^[\r\n]+/, "").split(/\r?\n/).find((line) => !/^\s*gpg:/.test(line)) ?? "";
+  const prTitle = headerOf(message);
   const { scopes, requireScope, disallowScopes, subjectPattern, subjectPatternError, headerPattern, headerPatternCorrespondence, setOutputs = true } = options;
   const types = options.types || defaultTypes;
   const setOutput2 = setOutputs ? setOutput : () => {
   };
-  if (prTitle.length > MAX_HEADER_LENGTH) {
-    raiseError(`The title is longer than ${MAX_HEADER_LENGTH} characters.`);
+  if (isTooLong(prTitle)) {
+    raiseError(`The title is longer than ${MAX_HEADER_LENGTH} characters.`, HEADER_TOO_LONG);
   }
   const revert = /^Revert "(.+)"(?:\n|$)/.exec(prTitle);
   if (revert) {
@@ -25668,7 +25677,12 @@ async function validatePrTitle(message, options = {}) {
   if (headerPatternCorrespondence) {
     parserOpts.headerCorrespondence = headerPatternCorrespondence;
   }
-  const result = new CommitParser(parserOpts).parse(prTitle);
+  let result;
+  try {
+    result = new CommitParser(parserOpts).parse(prTitle);
+  } catch {
+    result = { type: null, scope: null, subject: null, notes: [] };
+  }
   setOutput2("type", result.type);
   setOutput2("scope", result.scope);
   setOutput2("subject", result.subject);
@@ -25742,9 +25756,9 @@ ${printAvailableTypes()}`);
       );
     }
   }
-  function raiseError(message2) {
+  function raiseError(message2, code) {
     setOutput2("error_message", message2);
-    throw new Error(message2);
+    throw Object.assign(new Error(message2), code && { code });
   }
 }
 function isBotPullRequest(pullRequest) {
@@ -25846,13 +25860,18 @@ async function run() {
           if (nonMergeCommits.length === 1) {
             try {
               await validatePrTitle(nonMergeCommits[0].commit.message, { ...validationOptions, setOutputs: false });
-            } catch {
+            } catch (error2) {
+              if (error2.code === HEADER_TOO_LONG) {
+                throw new Error(
+                  `Pull request has only one commit and its commit header is longer than ${MAX_HEADER_LENGTH} characters. Shorten the commit header, or add another commit.`
+                );
+              }
               throw new Error(
                 `Pull request has only one commit and it's not semantic; this may lead to a non-semantic commit in the base branch (see https://github.com/community/community/discussions/16271 ). Amend the commit message to match the pull request title, or add another commit.`
               );
             }
             if (validateSingleCommitMatchesPrTitle) {
-              const commitTitle = nonMergeCommits[0].commit.message.split("\n")[0];
+              const commitTitle = nonMergeCommits[0].commit.message.split(/\r?\n/)[0];
               if (commitTitle !== pullRequest.title) {
                 throw new Error(
                   `The pull request has only one (non-merge) commit and in this case Github will use it as the default commit message when merging. The pull request title doesn't match the commit though ("${pullRequest.title}" vs. "${commitTitle}"). Please update the pull request title accordingly to avoid surprises.`
