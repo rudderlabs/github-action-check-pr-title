@@ -29,7 +29,7 @@ export const HEADER_TOO_LONG = 'HEADER_TOO_LONG';
 
 // The parser takes the first non-blank line that is not GPG output. When every
 // line is GPG output, the first one stays, so the error message can name it.
-function headerOf(message) {
+export function headerOf(message) {
   const lines = message.split(/\r?\n/).filter((line) => line.trim());
   return lines.find((line) => !/^\s*gpg:/.test(line)) ?? lines[0] ?? '';
 }
