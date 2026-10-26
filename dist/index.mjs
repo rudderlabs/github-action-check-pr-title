@@ -25677,12 +25677,7 @@ async function validatePrTitle(message, options = {}) {
   if (headerPatternCorrespondence) {
     parserOpts.headerCorrespondence = headerPatternCorrespondence;
   }
-  let result;
-  try {
-    result = new CommitParser(parserOpts).parse(prTitle);
-  } catch {
-    result = { type: null, scope: null, subject: null, notes: [] };
-  }
+  const result = prTitle.trim() ? new CommitParser(parserOpts).parse(prTitle) : { type: null, scope: null, subject: null, notes: [] };
   setOutput2("type", result.type);
   setOutput2("scope", result.scope);
   setOutput2("subject", result.subject);

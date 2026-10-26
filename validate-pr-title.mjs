@@ -71,13 +71,10 @@ export async function validatePrTitle(message, options = {}) {
   if (headerPatternCorrespondence) {
     parserOpts.headerCorrespondence = headerPatternCorrespondence;
   }
-  let result;
-  try {
-    result = new CommitParser(parserOpts).parse(prTitle);
-  } catch {
-    // The parser throws on a blank message. The checks below report it as a title with no type.
-    result = { type: null, scope: null, subject: null, notes: [] };
-  }
+  // The parser throws on a blank message. The checks below report it as a title with no type.
+  const result = prTitle.trim()
+    ? new CommitParser(parserOpts).parse(prTitle)
+    : { type: null, scope: null, subject: null, notes: [] };
 
   setOutput('type', result.type);
   setOutput('scope', result.scope);
