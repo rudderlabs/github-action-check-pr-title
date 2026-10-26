@@ -23,19 +23,36 @@ export function formatMessage(message, values) {
   return formatted;
 }
 
-export async function validatePrTitle(prTitle, options = {}) {
+// GitHub caps a PR title at 256 characters. A commit header has no cap.
+export const MAX_HEADER_LENGTH = 1000;
+
+export async function validatePrTitle(message, options = {}) {
+  // The checks read only the header. Parse time grows faster than linear with
+  // input length, so the parser never sees the body or an unbounded header.
+  // Like the parser, the header is the first line after leading blank lines that is not GPG output.
+  const prTitle =
+    message
+      .replace(/^[\r\n]+/, '')
+      .split(/\r?\n/)
+      .find((line) => !/^\s*gpg:/.test(line)) ?? '';
+  const { scopes, requireScope, disallowScopes, subjectPattern, subjectPatternError, headerPattern, headerPatternCorrespondence, setOutputs = true } =
+    options;
+  const types = options.types || defaultTypes;
+  const setOutput = setOutputs ? core.setOutput : () => {};
+
+  if (prTitle.length > MAX_HEADER_LENGTH) {
+    raiseError(`The title is longer than ${MAX_HEADER_LENGTH} characters.`);
+  }
+
   // GitHub's Revert button titles the pull request `Revert "<original title>"` (amannn#278).
   const revert = /^Revert "(.+)"(?:\n|$)/.exec(prTitle);
   if (revert) {
     return validatePrTitle(revert[1], options);
   }
 
-  const { scopes, requireScope, disallowScopes, subjectPattern, subjectPatternError, headerPattern, headerPatternCorrespondence, setOutputs = true } =
-    options;
-  const types = options.types || defaultTypes;
-  const setOutput = setOutputs ? core.setOutput : () => {};
-
   const { parser: parserOpts } = await conventionalCommitsConfig();
+  // Nothing reads issue references, and their regex is the slowest part of a parse.
+  parserOpts.issuePrefixes = null;
   if (headerPattern) {
     parserOpts.headerPattern = headerPattern;
     // The parser tries the preset's breaking pattern first, which would bypass the custom one.

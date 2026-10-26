@@ -25645,16 +25645,22 @@ function formatMessage(message, values) {
   }
   return formatted;
 }
-async function validatePrTitle(prTitle, options = {}) {
-  const revert = /^Revert "(.+)"(?:\n|$)/.exec(prTitle);
-  if (revert) {
-    return validatePrTitle(revert[1], options);
-  }
+var MAX_HEADER_LENGTH = 1e3;
+async function validatePrTitle(message, options = {}) {
+  const prTitle = message.replace(/^[\r\n]+/, "").split(/\r?\n/).find((line) => !/^\s*gpg:/.test(line)) ?? "";
   const { scopes, requireScope, disallowScopes, subjectPattern, subjectPatternError, headerPattern, headerPatternCorrespondence, setOutputs = true } = options;
   const types = options.types || defaultTypes;
   const setOutput2 = setOutputs ? setOutput : () => {
   };
+  if (prTitle.length > MAX_HEADER_LENGTH) {
+    raiseError(`The title is longer than ${MAX_HEADER_LENGTH} characters.`);
+  }
+  const revert = /^Revert "(.+)"(?:\n|$)/.exec(prTitle);
+  if (revert) {
+    return validatePrTitle(revert[1], options);
+  }
   const { parser: parserOpts } = await createPreset();
+  parserOpts.issuePrefixes = null;
   if (headerPattern) {
     parserOpts.headerPattern = headerPattern;
     delete parserOpts.breakingHeaderPattern;
@@ -25699,11 +25705,11 @@ ${printAvailableTypes()}`
 ${printAvailableTypes()}`);
   }
   if (requireScope && !result.scope) {
-    let message = `No scope found in pull request title "${prTitle}".`;
+    let message2 = `No scope found in pull request title "${prTitle}".`;
     if (scopes) {
-      message += ` Scope must match one of: ${scopes.join(", ")}.`;
+      message2 += ` Scope must match one of: ${scopes.join(", ")}.`;
     }
-    raiseError(message);
+    raiseError(message2);
   }
   const givenScopes = result.scope ? result.scope.split(",").map((scope) => scope.trim()) : void 0;
   const unknownScopes = givenScopes ? givenScopes.filter(isUnknownScope) : [];
@@ -25716,11 +25722,11 @@ ${printAvailableTypes()}`);
   if (disallowScopes && disallowedScopes.length > 0) {
     raiseError(`Disallowed ${disallowedScopes.length === 1 ? "scope was" : "scopes were"} found: ${disallowedScopes.join(", ")}`);
   }
-  function throwSubjectPatternError(message) {
+  function throwSubjectPatternError(message2) {
     if (subjectPatternError) {
-      message = formatMessage(subjectPatternError, { subject: result.subject, title: prTitle });
+      message2 = formatMessage(subjectPatternError, { subject: result.subject, title: prTitle });
     }
-    raiseError(message);
+    raiseError(message2);
   }
   if (subjectPattern) {
     const match = result.subject.match(new RegExp(subjectPattern));
@@ -25736,9 +25742,9 @@ ${printAvailableTypes()}`);
       );
     }
   }
-  function raiseError(message) {
-    setOutput2("error_message", message);
-    throw new Error(message);
+  function raiseError(message2) {
+    setOutput2("error_message", message2);
+    throw new Error(message2);
   }
 }
 function isBotPullRequest(pullRequest) {

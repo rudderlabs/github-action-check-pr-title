@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
+import { Worker } from 'node:worker_threads';
 
-import { formatMessage, isBotPullRequest, validatePrTitle } from './validate-pr-title.mjs';
+import { formatMessage, isBotPullRequest, MAX_HEADER_LENGTH, validatePrTitle } from './validate-pr-title.mjs';
 
 // Ported from amannn/action-semantic-pull-request so the two actions agree on every title.
 
@@ -359,5 +360,63 @@ describe('isBotPullRequest', () => {
   test('checks pull requests that carry no author', () => {
     assert.equal(isBotPullRequest({}), false);
     assert.equal(isBotPullRequest(undefined), false);
+  });
+});
+
+describe('commit messages', () => {
+  const body = 'a'.repeat(40 * 1024);
+
+  // A slow regex blocks the thread, so the parse runs in a worker the test can stop.
+  function validateInWorker(message, limitMs) {
+    const worker = new Worker(
+      `const { parentPort, workerData } = require('node:worker_threads');
+      import(workerData.module).then(async ({ validatePrTitle }) => {
+        const start = performance.now();
+        await validatePrTitle(workerData.message, { setOutputs: false });
+        parentPort.postMessage(performance.now() - start);
+      });`,
+      { eval: true, workerData: { message, module: new URL('./validate-pr-title.mjs', import.meta.url).href } },
+    );
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        worker.terminate();
+        reject(new Error(`no result within ${limitMs} ms`));
+      }, limitMs);
+      worker.once('message', (elapsedMs) => {
+        clearTimeout(timer);
+        worker.terminate();
+        resolve(elapsedMs);
+      });
+      worker.once('error', (error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+    });
+  }
+
+  test('validates a commit with a 40 KB body in under a second', async () => {
+    const elapsedMs = await validateInWorker(`fix: done\n\n${body}\n\nRefs #1`, 10_000);
+    assert.ok(elapsedMs < 1000, `took ${Math.round(elapsedMs)} ms`);
+  });
+
+  test('rejects a 40 KB header in under a second', async () => {
+    await assert.rejects(validateInWorker(`fix: ${body}`, 10_000), /longer than 1000 characters/);
+  });
+
+  test('validates only the header line', async () => {
+    await validatePrTitle('\nfix: done\r\nnot a conventional line');
+    await assertRejects('wip\n\nfix: done', undefined, 'No release type found in pull request title "wip".');
+  });
+
+  test('skips GPG output before the header, as the parser does', async () => {
+    await validatePrTitle('gpg: Signature made today\nfix: done');
+  });
+
+  test('accepts a header at the length limit', async () => {
+    await validatePrTitle(`fix: ${'a'.repeat(MAX_HEADER_LENGTH - 5)}`);
+  });
+
+  test('rejects a longer header', async () => {
+    await assertRejects(`fix: ${'a'.repeat(MAX_HEADER_LENGTH - 4)}`, undefined, `The title is longer than ${MAX_HEADER_LENGTH} characters.`);
   });
 });
