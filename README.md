@@ -65,7 +65,7 @@ All inputs are optional. Lists are newline-delimited, and list entries are regex
 | `subjectPatternError` | Message when `subjectPattern` fails. `{subject}` and `{title}` are replaced. |
 | `headerPattern` | Custom header regex. See [headerPattern](https://github.com/conventional-changelog/conventional-changelog/tree/master/packages/conventional-commits-parser#headerpattern). |
 | `headerPatternCorrespondence` | Comma-separated names of the `headerPattern` groups, e.g. `type, scope, subject`. |
-| `wip` | `true` to skip titles that start with `[WIP] ` and report a pending `action-semantic-pull-request` status. |
+| `wip` | `true` to skip titles that start with `[WIP] ` and report a pending `action-semantic-pull-request` status. Bot, `ignoreLabels` and `merge_group` skips report it as successful, so a required status never blocks them. |
 | `validateSingleCommit` | `true` to also validate the commit message when the pull request has one non-merge commit, because GitHub squashes with that message. |
 | `validateSingleCommitMatchesPrTitle` | With `validateSingleCommit`, `true` to require that commit's title to equal the PR title. |
 | `ignoreLabels` | Labels that skip the check. Add the `labeled` and `unlabeled` triggers to re-run on label changes. |

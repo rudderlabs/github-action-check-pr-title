@@ -25647,8 +25647,10 @@ async function validatePrTitle(prTitle, options = {}) {
   if (revert) {
     return validatePrTitle(revert[1], options);
   }
-  const { scopes, requireScope, disallowScopes, subjectPattern, subjectPatternError, headerPattern, headerPatternCorrespondence } = options;
+  const { scopes, requireScope, disallowScopes, subjectPattern, subjectPatternError, headerPattern, headerPatternCorrespondence, setOutputs = true } = options;
   const types = options.types || defaultTypes;
+  const setOutput2 = setOutputs ? setOutput : () => {
+  };
   const { parser: parserOpts } = await createPreset();
   if (headerPattern) {
     parserOpts.headerPattern = headerPattern;
@@ -25657,10 +25659,10 @@ async function validatePrTitle(prTitle, options = {}) {
     parserOpts.headerCorrespondence = headerPatternCorrespondence;
   }
   const result = new CommitParser(parserOpts).parse(prTitle);
-  setOutput("type", result.type);
-  setOutput("scope", result.scope);
-  setOutput("subject", result.subject);
-  setOutput("breaking", result.notes.some((note) => note.title === "BREAKING CHANGE"));
+  setOutput2("type", result.type);
+  setOutput2("scope", result.scope);
+  setOutput2("subject", result.subject);
+  setOutput2("breaking", result.notes.some((note) => note.title === "BREAKING CHANGE"));
   function printAvailableTypes() {
     return `Available types:
 ${types.map((type) => {
@@ -25731,7 +25733,7 @@ ${printAvailableTypes()}`);
     }
   }
   function raiseError(message) {
-    setOutput("error_message", message);
+    setOutput2("error_message", message);
     throw new Error(message);
   }
 }
@@ -25742,6 +25744,18 @@ function isBotPullRequest(pullRequest) {
 // index.mjs
 async function run() {
   try {
+    let reportStatus = function(owner2, repo2, sha, state, description) {
+      return client.request("POST /repos/{owner}/{repo}/statuses/{sha}", {
+        owner: owner2,
+        repo: repo2,
+        sha,
+        state,
+        target_url: "https://github.com/rudderlabs/github-action-check-pr-title",
+        description,
+        // amannn's context name, so branch protection rules that require it keep working.
+        context: "action-semantic-pull-request"
+      });
+    };
     const {
       types,
       scopes,
@@ -25768,32 +25782,38 @@ async function run() {
       headerPattern,
       headerPatternCorrespondence
     };
+    const token = process.env.GITHUB_TOKEN || githubToken;
+    const client = token && getOctokit(token, { baseUrl: githubBaseUrl });
     const contextPullRequest = context2.payload.pull_request;
     if (!contextPullRequest) {
       if (context2.eventName === "merge_group") {
+        if (wip && client) {
+          const { owner: owner2, repo: repo2 } = context2.repo;
+          await reportStatus(owner2, repo2, context2.payload.merge_group.head_sha, "success", "The pull request run checked the title.");
+        }
         info("Skipping: a merge_group event has no pull request title to check.");
         return;
       }
       throw new Error(`The '${context2.eventName}' event has no pull request. Run this action on pull_request events.`);
     }
-    const token = process.env.GITHUB_TOKEN || githubToken;
     if (!token && (wip || validateSingleCommit)) {
       throw new Error("`wip` and `validateSingleCommit` need the GITHUB_TOKEN environment variable or the githubToken input to call the GitHub API.");
     }
-    const client = token && getOctokit(token, { baseUrl: githubBaseUrl });
     const owner = contextPullRequest.base.user.login;
     const repo = contextPullRequest.base.repo.name;
     const pullRequest = client ? (await client.rest.pulls.get({ owner, repo, pull_number: contextPullRequest.number })).data : contextPullRequest;
     info(`Checking PR title: '${pullRequest.title}'`);
+    const skip = async (message) => {
+      if (wip) await reportStatus(owner, repo, pullRequest.head.sha, "success", "PR title validation was skipped.");
+      info(message);
+    };
     if (isBotPullRequest(pullRequest)) {
-      info(`Skipping: the author ${pullRequest.user.login} is a bot.`);
-      return;
+      return skip(`Skipping: the author ${pullRequest.user.login} is a bot.`);
     }
     if (ignoreLabels) {
       const labelName = pullRequest.labels.map((label) => label.name).find((name) => ignoreLabels.includes(name));
       if (labelName) {
-        info(`Validation was skipped because the PR label "${labelName}" was found.`);
-        return;
+        return skip(`Validation was skipped because the PR label "${labelName}" was found.`);
       }
     }
     const isWip = wip && /^\[WIP\]\s/.test(pullRequest.title);
@@ -25815,7 +25835,7 @@ async function run() {
           }
           if (nonMergeCommits.length === 1) {
             try {
-              await validatePrTitle(nonMergeCommits[0].commit.message, validationOptions);
+              await validatePrTitle(nonMergeCommits[0].commit.message, { ...validationOptions, setOutputs: false });
             } catch {
               throw new Error(
                 `Pull request has only one commit and it's not semantic; this may lead to a non-semantic commit in the base branch (see https://github.com/community/community/discussions/16271 ). Amend the commit message to match the pull request title, or add another commit.`
@@ -25836,18 +25856,16 @@ async function run() {
       }
     }
     if (wip) {
-      await client.request("POST /repos/{owner}/{repo}/statuses/{sha}", {
+      await reportStatus(
         owner,
         repo,
-        sha: pullRequest.head.sha,
-        state: isWip || validationError != null ? "pending" : "success",
-        target_url: "https://github.com/rudderlabs/github-action-check-pr-title",
-        description: isWip ? 'This PR is marked with "[WIP]".' : validationError ? "PR title validation failed" : "Ready for review & merge.",
-        // amannn's context name, so branch protection rules that require it keep working.
-        context: "action-semantic-pull-request"
-      });
+        pullRequest.head.sha,
+        isWip || validationError != null ? "pending" : "success",
+        isWip ? 'This PR is marked with "[WIP]".' : validationError ? "PR title validation failed" : "Ready for review & merge."
+      );
     }
     if (!isWip && validationError) {
+      setOutput("error_message", validationError.message);
       throw validationError;
     }
   } catch (error2) {

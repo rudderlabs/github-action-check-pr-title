@@ -153,6 +153,7 @@ describe('with a token, from the GitHub API', () => {
           'GET /repos/rudderlabs/demo/pulls/7': api.pullRequest,
           'GET /repos/rudderlabs/demo/pulls/7/commits': api.commits,
           'POST /repos/rudderlabs/demo/statuses/abc123': {},
+          'POST /repos/rudderlabs/demo/statuses/mq123': {},
         }[route];
         response.writeHead(reply ? 200 : 404, { 'content-type': 'application/json' });
         response.end(JSON.stringify(reply ?? { message: 'Not Found' }));
@@ -230,6 +231,68 @@ describe('with a token, from the GitHub API', () => {
 
     assert.equal(result.status, 0, result.stdout + result.stderr);
     assert.equal(api.requests.find(({ route }) => route.startsWith('POST')).body.state, 'success');
+  });
+
+  // Repositories that require the wip status must still get it when the check is skipped.
+  test('marks a skipped bot pull request successful when wip is on', async () => {
+    const result = await runWithApi({
+      pullRequest: pullRequest({ title: 'Bump follow-redirects', user: { login: 'dependabot[bot]', type: 'Bot' } }),
+      inputs: { WIP: 'true' },
+    });
+
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    const status = api.requests.find(({ route }) => route.startsWith('POST'));
+    assert.equal(status.route, 'POST /repos/rudderlabs/demo/statuses/abc123');
+    assert.equal(status.body.state, 'success');
+    assert.equal(status.body.context, 'action-semantic-pull-request');
+  });
+
+  test('marks a pull request skipped by label successful when wip is on', async () => {
+    const result = await runWithApi({
+      pullRequest: pullRequest({ title: 'not semantic', labels: [{ name: 'bot' }] }),
+      inputs: { WIP: 'true', IGNORELABELS: 'bot' },
+    });
+
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.equal(api.requests.find(({ route }) => route.startsWith('POST')).body.state, 'success');
+  });
+
+  test('marks the merge queue commit successful when wip is on', async () => {
+    api = { requests: [] };
+    const result = await runAction({
+      eventName: 'merge_group',
+      payload: { merge_group: { head_sha: 'mq123' } },
+      inputs: { GITHUBBASEURL: baseUrl, WIP: 'true' },
+      env: { GITHUB_TOKEN: 'test-token', GITHUB_REPOSITORY: 'rudderlabs/demo' },
+    });
+
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    const status = api.requests.find(({ route }) => route.startsWith('POST'));
+    assert.equal(status.route, 'POST /repos/rudderlabs/demo/statuses/mq123');
+    assert.equal(status.body.state, 'success');
+  });
+
+  test('keeps the outputs from the title when it validates the single commit', async () => {
+    const result = await runWithApi({
+      pullRequest: pullRequest({ title: 'feat!: remove v1' }),
+      commits: [commit('fix: remove v1')],
+      inputs: { VALIDATESINGLECOMMIT: 'true' },
+    });
+
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.doesNotMatch(result.output, /type<<.*\nfix\n/);
+    assert.doesNotMatch(result.output, /breaking<<.*\nfalse\n/);
+  });
+
+  test('reports the single-commit failure in error_message', async () => {
+    const result = await runWithApi({
+      pullRequest: pullRequest({ title: 'fix: done' }),
+      commits: [commit('wip')],
+      inputs: { VALIDATESINGLECOMMIT: 'true' },
+    });
+
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(result.output, /error_message<<.*\nPull request has only one commit and it's not semantic/);
   });
 
   test('fails a single non-semantic commit when validateSingleCommit is on', async () => {

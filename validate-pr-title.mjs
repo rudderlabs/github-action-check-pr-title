@@ -24,8 +24,10 @@ export async function validatePrTitle(prTitle, options = {}) {
     return validatePrTitle(revert[1], options);
   }
 
-  const { scopes, requireScope, disallowScopes, subjectPattern, subjectPatternError, headerPattern, headerPatternCorrespondence } = options;
+  const { scopes, requireScope, disallowScopes, subjectPattern, subjectPatternError, headerPattern, headerPatternCorrespondence, setOutputs = true } =
+    options;
   const types = options.types || defaultTypes;
+  const setOutput = setOutputs ? core.setOutput : () => {};
 
   const { parser: parserOpts } = await conventionalCommitsConfig();
   if (headerPattern) {
@@ -36,11 +38,11 @@ export async function validatePrTitle(prTitle, options = {}) {
   }
   const result = new CommitParser(parserOpts).parse(prTitle);
 
-  core.setOutput('type', result.type);
-  core.setOutput('scope', result.scope);
-  core.setOutput('subject', result.subject);
+  setOutput('type', result.type);
+  setOutput('scope', result.scope);
+  setOutput('subject', result.subject);
   // The parser records `!` as a BREAKING CHANGE note (amannn#273).
-  core.setOutput('breaking', result.notes.some((note) => note.title === 'BREAKING CHANGE'));
+  setOutput('breaking', result.notes.some((note) => note.title === 'BREAKING CHANGE'));
 
   function printAvailableTypes() {
     return `Available types:\n${types
@@ -123,7 +125,7 @@ export async function validatePrTitle(prTitle, options = {}) {
   }
 
   function raiseError(message) {
-    core.setOutput('error_message', message);
+    setOutput('error_message', message);
     throw new Error(message);
   }
 }
