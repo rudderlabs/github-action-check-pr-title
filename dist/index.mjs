@@ -24575,7 +24575,7 @@ function getOctokit(token, options, ...additionalPlugins) {
 // log-safe.mjs
 var ZERO_WIDTH_SPACE = "\u200B";
 function escapeWorkflowCommands(text) {
-  return String(text).replace(/##\[/g, `#${ZERO_WIDTH_SPACE}#[`).replace(/::/g, `:${ZERO_WIDTH_SPACE}:`);
+  return String(text).replace(/##\[/g, `#${ZERO_WIDTH_SPACE}#[`).replace(/:(?=:)/g, `:${ZERO_WIDTH_SPACE}`);
 }
 
 // parse-config.mjs

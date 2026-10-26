@@ -170,6 +170,8 @@ async function run() {
       throw validationError;
     }
   } catch (error) {
+    // core.setFailed writes an `::error::` line, which the runner parses before the
+    // message, so the escape only keeps a raw marker out of the log text.
     core.setFailed(escapeWorkflowCommands(error.message));
   }
 }

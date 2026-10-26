@@ -2,10 +2,10 @@
 // in it as a workflow command. It trims Unicode whitespace before the `::`, so
 // every `::` is broken, not only a leading one. A zero-width space keeps the
 // text readable.
-const ZERO_WIDTH_SPACE = '​';
+const ZERO_WIDTH_SPACE = '\u200B';
 
 export function escapeWorkflowCommands(text) {
   return String(text)
     .replace(/##\[/g, `#${ZERO_WIDTH_SPACE}#[`)
-    .replace(/::/g, `:${ZERO_WIDTH_SPACE}:`);
+    .replace(/:(?=:)/g, `:${ZERO_WIDTH_SPACE}`);
 }
