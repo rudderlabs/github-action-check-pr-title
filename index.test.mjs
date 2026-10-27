@@ -138,6 +138,30 @@ describe('without a token, from the event payload', () => {
     assert.match(result.stdout, /`wip` and `validateSingleCommit` need the GITHUB_TOKEN environment variable/);
   });
 
+  test('fails with a clear message when validateSingleCommit needs a token', async () => {
+    const result = await runAction({ payload: { pull_request: pullRequest() }, inputs: { VALIDATESINGLECOMMIT: 'true' } });
+
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(result.stdout, /`wip` and `validateSingleCommit` need the GITHUB_TOKEN environment variable/);
+  });
+
+  test('validates a pull request whose labels are not ignored', async () => {
+    const result = await runAction({
+      payload: { pull_request: pullRequest({ title: 'not semantic', labels: [{ name: 'docs' }] }) },
+      inputs: { IGNORELABELS: 'bot' },
+    });
+
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(result.stdout, /No release type found in pull request title "not semantic"/);
+  });
+
+  test('validates a [WIP] title when wip is off', async () => {
+    const result = await runAction({ payload: { pull_request: pullRequest({ title: '[WIP] not semantic' }) } });
+
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(result.stdout, /No release type found in pull request title "\[WIP\] not semantic"/);
+  });
+
   test('passes a merge_group event, which has no pull request', async () => {
     const result = await runAction({ eventName: 'merge_group', payload: { merge_group: { head_sha: 'abc' } } });
 
@@ -169,10 +193,15 @@ describe('with a token, from the GitHub API', () => {
         const reply = {
           'GET /repos/rudderlabs/demo/pulls/7': api.pullRequest,
           'GET /repos/rudderlabs/demo/pulls/7/commits': api.commits,
+          'GET /repos/rudderlabs/demo/pulls/7/commits?page=2': api.commitsPage2,
           'POST /repos/rudderlabs/demo/statuses/abc123': {},
           'POST /repos/rudderlabs/demo/statuses/mq123': {},
         }[route];
-        response.writeHead(reply ? 200 : 404, { 'content-type': 'application/json' });
+        const headers = { 'content-type': 'application/json' };
+        if (route === 'GET /repos/rudderlabs/demo/pulls/7/commits' && api.commitsPage2) {
+          headers.link = `<${baseUrl}/repos/rudderlabs/demo/pulls/7/commits?page=2>; rel="next"`;
+        }
+        response.writeHead(reply ? 200 : 404, headers);
         response.end(JSON.stringify(reply ?? { message: 'Not Found' }));
       });
     });
@@ -182,8 +211,8 @@ describe('with a token, from the GitHub API', () => {
 
   after(() => server.close());
 
-  function runWithApi({ pullRequest: current, commits = [], inputs = {}, env = { GITHUB_TOKEN: 'test-token' }, timeout }) {
-    api = { pullRequest: current, commits, requests: [] };
+  function runWithApi({ pullRequest: current, commits = [], commitsPage2, inputs = {}, env = { GITHUB_TOKEN: 'test-token' }, timeout }) {
+    api = { pullRequest: current, commits, commitsPage2, requests: [] };
     return runAction({
       // The payload title is stale, as when a person retitles and re-runs the job.
       payload: { pull_request: pullRequest({ title: 'stale title' }) },
@@ -232,6 +261,7 @@ describe('with a token, from the GitHub API', () => {
     });
 
     assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.match(result.stdout, /Validation was skipped because the PR label "bot" was found\./);
   });
 
   test('marks a [WIP] pull request pending and passes', async () => {
@@ -242,6 +272,26 @@ describe('with a token, from the GitHub API', () => {
     assert.equal(status.body.state, 'pending');
     // Branch protection rules that require amannn's status keep working.
     assert.equal(status.body.context, 'action-semantic-pull-request');
+  });
+
+  test('fails an invalid title and marks it pending when wip is on', async () => {
+    const result = await runWithApi({ pullRequest: pullRequest({ title: 'not semantic' }), inputs: { WIP: 'true' } });
+
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(result.stdout, /No release type found in pull request title "not semantic"/);
+    const status = api.requests.find(({ route }) => route === 'POST /repos/rudderlabs/demo/statuses/abc123');
+    assert.equal(status.body.state, 'pending');
+    assert.equal(status.body.description, 'PR title validation failed');
+  });
+
+  test('validates a [WIP] title without the space when wip is on', async () => {
+    const result = await runWithApi({ pullRequest: pullRequest({ title: '[WIP]not semantic' }), inputs: { WIP: 'true' } });
+
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(result.stdout, /No release type found in pull request title "\[WIP\]not semantic"/);
+    const status = api.requests.find(({ route }) => route === 'POST /repos/rudderlabs/demo/statuses/abc123');
+    assert.equal(status.body.state, 'pending');
+    assert.equal(status.body.description, 'PR title validation failed');
   });
 
   test('marks a valid pull request successful when wip is on', async () => {
@@ -298,6 +348,8 @@ describe('with a token, from the GitHub API', () => {
     });
 
     assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.match(result.output, /type<<.*\nfeat\n/);
+    assert.match(result.output, /breaking<<.*\ntrue\n/);
     assert.doesNotMatch(result.output, /type<<.*\nfix\n/);
     assert.doesNotMatch(result.output, /breaking<<.*\nfalse\n/);
   });
@@ -335,6 +387,16 @@ describe('with a token, from the GitHub API', () => {
     assert.match(result.stdout, /The pull request title doesn't match the commit though/);
   });
 
+  test('passes a single commit whose first line matches the title', async () => {
+    const result = await runWithApi({
+      pullRequest: pullRequest({ title: 'fix: done' }),
+      commits: [commit('fix: done\n\nbody')],
+      inputs: { VALIDATESINGLECOMMIT: 'true', VALIDATESINGLECOMMITMATCHESPRTITLE: 'true' },
+    });
+
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+  });
+
   test('validates a single commit with a 40 KB body', async () => {
     const result = await runWithApi({
       pullRequest: pullRequest({ title: 'fix: done' }),
@@ -354,6 +416,30 @@ describe('with a token, from the GitHub API', () => {
     });
 
     assert.equal(result.status, 0, result.stdout + result.stderr);
+  });
+
+  test('stops reading commits after two non-merge commits', async () => {
+    const result = await runWithApi({
+      pullRequest: pullRequest({ title: 'fix: done' }),
+      commits: [commit('wip'), commit('more wip')],
+      commitsPage2: [commit('fix: later')],
+      inputs: { VALIDATESINGLECOMMIT: 'true' },
+    });
+
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.ok(!api.requests.some(({ route }) => route.endsWith('/commits?page=2')), 'read the second page of commits');
+  });
+
+  test('counts non-merge commits across pages', async () => {
+    const result = await runWithApi({
+      pullRequest: pullRequest({ title: 'fix: done' }),
+      commits: [commit('wip')],
+      commitsPage2: [commit('more wip')],
+      inputs: { VALIDATESINGLECOMMIT: 'true' },
+    });
+
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.ok(api.requests.some(({ route }) => route.endsWith('/commits?page=2')), 'did not read the second page of commits');
   });
 
   test('matches a single commit with a leading blank line against the title', async () => {

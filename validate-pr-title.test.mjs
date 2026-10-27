@@ -2,16 +2,35 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { Worker } from 'node:worker_threads';
 
+import conventionalCommitTypes from 'conventional-commit-types' with { type: 'json' };
+
 import { formatMessage, HEADER_TOO_LONG, isBotPullRequest, MAX_HEADER_LENGTH, validatePrTitle } from './validate-pr-title.mjs';
 
 // Ported from amannn/action-semantic-pull-request so the two actions agree on every title.
 
+// The default list carries each type's description; a custom list carries the patterns only.
+function availableTypes(types) {
+  const lines = types
+    ? types.map((type) => ` - ${type}`)
+    : Object.entries(conventionalCommitTypes.types).map(([type, { description }]) => ` - ${type}: ${description}`);
+  return `Available types:\n${lines.join('\n')}`;
+}
+
+function noTypeMessage(title, types) {
+  return `No release type found in pull request title "${title}". Add a prefix to indicate what kind of release this pull request corresponds to. For reference, see https://www.conventionalcommits.org/\n\n${availableTypes(types)}`;
+}
+
+function unknownTypeMessage(type, title, types) {
+  return `Unknown release type "${type}" found in pull request title "${title}".\n\n${availableTypes(types)}`;
+}
+
+// A string must equal the whole message; amannn parity covers the full text.
 async function assertRejects(title, options, expected) {
   await assert.rejects(validatePrTitle(title, options), (error) => {
     if (expected instanceof RegExp) {
       assert.match(error.message, expected);
     } else {
-      assert.ok(error.message.includes(expected), `"${error.message}" does not include "${expected}"`);
+      assert.equal(error.message, expected);
     }
     return true;
   });
@@ -24,11 +43,11 @@ test('allows valid PR titles that use the default types', async () => {
 });
 
 test('throws for PR titles without a type', async () => {
-  await assertRejects('Fix bug', undefined, 'No release type found in pull request title "Fix bug".');
+  await assertRejects('Fix bug', undefined, noTypeMessage('Fix bug'));
 });
 
 test('throws for PR titles with only a type', async () => {
-  await assertRejects('fix:', undefined, 'No release type found in pull request title "fix:".');
+  await assertRejects('fix:', undefined, noTypeMessage('fix:'));
 });
 
 test('throws for PR titles without a subject', async () => {
@@ -36,7 +55,7 @@ test('throws for PR titles without a subject', async () => {
 });
 
 test('throws for PR titles with an unknown type', async () => {
-  await assertRejects('foo: Bar', undefined, 'Unknown release type "foo" found in pull request title "foo: Bar".');
+  await assertRejects('foo: Bar', undefined, unknownTypeMessage('foo', 'foo: Bar'));
 });
 
 describe('regex types', () => {
@@ -54,11 +73,11 @@ describe('regex types', () => {
   });
 
   test('throws for PR titles without a type', async () => {
-    await assertRejects('Fix JIRA-123 bug', { types, headerPattern }, 'No release type found in pull request title "Fix JIRA-123 bug".');
+    await assertRejects('Fix JIRA-123 bug', { types, headerPattern }, noTypeMessage('Fix JIRA-123 bug', types));
   });
 
   test('throws for PR titles with only a type', async () => {
-    await assertRejects('JIRA-123:', { types, headerPattern }, 'No release type found in pull request title "JIRA-123:".');
+    await assertRejects('JIRA-123:', { types, headerPattern }, noTypeMessage('JIRA-123:', types));
   });
 
   test('throws for PR titles without a subject', async () => {
@@ -231,7 +250,7 @@ describe('custom types', () => {
   });
 
   test('throws for PR titles with an unknown type', async () => {
-    await assertRejects('fix: Foobar', { types: ['foo', 'bar'] }, 'Unknown release type "fix" found in pull request title "fix: Foobar".');
+    await assertRejects('fix: Foobar', { types: ['foo', 'bar'] }, unknownTypeMessage('fix', 'fix: Foobar', ['foo', 'bar']));
   });
 });
 
@@ -303,7 +322,7 @@ describe('rudderlabs titles', () => {
   });
 
   test('rejects a breaking-change marker without the colon', async () => {
-    await assertRejects('feat(api)! change the public API', undefined, 'No release type found');
+    await assertRejects('feat(api)! change the public API', undefined, noTypeMessage('feat(api)! change the public API'));
   });
 
   test('accepts the release-please title', async () => {
@@ -313,12 +332,16 @@ describe('rudderlabs titles', () => {
 
 describe('patterns with alternation match as a whole', () => {
   test('rejects a type that only starts with an alternative', async () => {
-    await assertRejects('feature: x', { types: ['feat|fix'] }, 'Unknown release type "feature"');
+    await assertRejects('feature: x', { types: ['feat|fix'] }, unknownTypeMessage('feature', 'feature: x', ['feat|fix']));
     await validatePrTitle('fix: x', { types: ['feat|fix'] });
   });
 
   test('rejects a scope that only starts with an alternative', async () => {
-    await assertRejects('fix(core-extra): x', { scopes: ['core|web'] }, 'Unknown scope "core-extra"');
+    await assertRejects('fix(core-extra): x', { scopes: ['core|web'] }, 'Unknown scope "core-extra" found in pull request title "fix(core-extra): x". Scope must match one of: core|web.');
+  });
+
+  test('trims spaces around each listed scope', async () => {
+    await validatePrTitle('fix(core, web): x', { scopes: ['core', 'web'] });
   });
 
   test('allows a scope that only starts with a disallowed alternative', async () => {
@@ -336,11 +359,19 @@ describe('GitHub revert titles', () => {
   });
 
   test('applies the configured rules to the quoted title', async () => {
-    await assertRejects('Revert "feat(router): add retries"', { scopes: ['core'] }, 'Unknown scope "router"');
+    await assertRejects(
+      'Revert "feat(router): add retries"',
+      { scopes: ['core'] },
+      'Unknown scope "router" found in pull request title "feat(router): add retries". Scope must match one of: core.',
+    );
+  });
+
+  test('rejects text after the closing quote', async () => {
+    await assertRejects('Revert "fix: a" and more', undefined, noTypeMessage('Revert "fix: a" and more'));
   });
 
   test('rejects a revert of a non-conventional title', async () => {
-    await assertRejects('Revert "Add retries"', undefined, 'No release type found in pull request title "Add retries"');
+    await assertRejects('Revert "Add retries"', undefined, noTypeMessage('Add retries'));
   });
 
   test('accepts a revert commit message with a body', async () => {
@@ -405,7 +436,7 @@ describe('commit messages', () => {
 
   test('validates only the header line', async () => {
     await validatePrTitle('\nfix: done\r\nnot a conventional line');
-    await assertRejects('wip\n\nfix: done', undefined, 'No release type found in pull request title "wip".');
+    await assertRejects('wip\n\nfix: done', undefined, noTypeMessage('wip'));
   });
 
   test('skips blank and whitespace-only lines before the header', async () => {
@@ -414,15 +445,20 @@ describe('commit messages', () => {
   });
 
   test('reports a title that is only GPG output as a title with no type', async () => {
-    await assertRejects('gpg: rotate key', undefined, 'No release type found in pull request title "gpg: rotate key".');
+    await assertRejects('gpg: rotate key', undefined, noTypeMessage('gpg: rotate key'));
   });
 
   test('reports a blank message as a title with no type', async () => {
-    await assertRejects('   ', undefined, 'No release type found in pull request title "".');
+    await assertRejects('   ', undefined, noTypeMessage(''));
   });
 
   test('reports a broken headerPattern instead of a missing type', async () => {
     await assert.rejects(validatePrTitle('fix: done', { headerPattern: '[' }), SyntaxError);
+  });
+
+  test('allows exactly 1000 code points and rejects 1001', async () => {
+    await validatePrTitle(`fix: ${'\u{1F600}'.repeat(995)}`);
+    await assert.rejects(validatePrTitle(`fix: ${'\u{1F600}'.repeat(996)}`), { code: HEADER_TOO_LONG });
   });
 
   test('counts the length limit in code points', async () => {
