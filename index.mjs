@@ -3,6 +3,7 @@
 import * as core from '@actions/core';
 import * as github from '@actions/github';
 
+import { escapeWorkflowCommands } from './log-safe.mjs';
 import { parseConfig } from './parse-config.mjs';
 import { HEADER_TOO_LONG, headerOf, isBotPullRequest, MAX_HEADER_LENGTH, validatePrTitle } from './validate-pr-title.mjs';
 
@@ -82,12 +83,12 @@ async function run() {
       ? (await client.rest.pulls.get({ owner, repo, pull_number: contextPullRequest.number })).data
       : contextPullRequest;
 
-    core.info(`Checking PR title: '${pullRequest.title}'`);
+    core.info(`Checking PR title: '${escapeWorkflowCommands(pullRequest.title)}'`);
 
     // A skipped pull request still needs the required wip status, or it can never merge.
     const skip = async (message) => {
       if (wip) await reportStatus(owner, repo, pullRequest.head.sha, 'success', 'PR title validation was skipped.');
-      core.info(message);
+      core.info(escapeWorkflowCommands(message));
     };
 
     if (isBotPullRequest(pullRequest)) {
@@ -175,7 +176,9 @@ async function run() {
       throw validationError;
     }
   } catch (error) {
-    core.setFailed(error.message);
+    // core.setFailed writes an `::error::` line, which the runner parses before the
+    // message, so the escape only keeps a raw marker out of the log text.
+    core.setFailed(escapeWorkflowCommands(error.message));
   }
 }
 

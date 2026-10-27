@@ -17,6 +17,15 @@ A header longer than 1000 characters fails. GitHub caps a PR title at 256 charac
 A title written by GitHub's Revert button, `Revert "<title>"`, passes when the quoted title passes.
 amannn fails these titles.
 
+### Upgrading from v1
+
+v1 ran commitlint. v2 drops these commitlint rules, so titles that v1 failed can pass:
+
+- `header-max-length`: the 100-character header limit.
+- `subject-case`: the subject case rule. To keep it, set `subjectPattern: ^(?![A-Z]).+$`.
+- `subject-full-stop`: the ban on a trailing period.
+- `header-trim`: the ban on trailing whitespace in the title. A leading space still fails, because the type must start the title.
+
 ## Skips
 
 The action skips a pull request when GitHub reports the author type as `Bot`.
