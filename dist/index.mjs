@@ -24572,6 +24572,12 @@ function getOctokit(token, options, ...additionalPlugins) {
   return new GitHubWithPlugins(getOctokitOptions(token, options));
 }
 
+// log-safe.mjs
+var ZERO_WIDTH_SPACE = "\u200B";
+function escapeWorkflowCommands(text) {
+  return String(text).replace(/##\[/g, `#${ZERO_WIDTH_SPACE}#[`).replace(/:(?=:)/g, `:${ZERO_WIDTH_SPACE}`);
+}
+
 // parse-config.mjs
 function parseEnum(input) {
   return input.split(/\n/).map((part) => part.trim()).filter((part) => part.length > 0);
@@ -25821,10 +25827,10 @@ async function run() {
     const owner = contextPullRequest.base.user.login;
     const repo = contextPullRequest.base.repo.name;
     const pullRequest = client ? (await client.rest.pulls.get({ owner, repo, pull_number: contextPullRequest.number })).data : contextPullRequest;
-    info(`Checking PR title: '${pullRequest.title}'`);
+    info(`Checking PR title: '${escapeWorkflowCommands(pullRequest.title)}'`);
     const skip = async (message) => {
       if (wip) await reportStatus(owner, repo, pullRequest.head.sha, "success", "PR title validation was skipped.");
-      info(message);
+      info(escapeWorkflowCommands(message));
     };
     if (isBotPullRequest(pullRequest)) {
       return skip(`Skipping: the author ${pullRequest.user.login} is a bot.`);
@@ -25893,7 +25899,7 @@ async function run() {
       throw validationError;
     }
   } catch (error2) {
-    setFailed(error2.message);
+    setFailed(escapeWorkflowCommands(error2.message));
   }
 }
 await run();
