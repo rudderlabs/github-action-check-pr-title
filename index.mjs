@@ -4,7 +4,7 @@ import * as core from '@actions/core';
 import * as github from '@actions/github';
 
 import { parseConfig } from './parse-config.mjs';
-import { isBotPullRequest, validatePrTitle } from './validate-pr-title.mjs';
+import { HEADER_TOO_LONG, headerOf, isBotPullRequest, MAX_HEADER_LENGTH, validatePrTitle } from './validate-pr-title.mjs';
 
 async function run() {
   try {
@@ -132,14 +132,20 @@ async function run() {
             try {
               // The outputs describe the PR title, so the commit check must not overwrite them.
               await validatePrTitle(nonMergeCommits[0].commit.message, { ...validationOptions, setOutputs: false });
-            } catch {
+            } catch (error) {
+              if (error.code === HEADER_TOO_LONG) {
+                throw new Error(
+                  `Pull request has only one commit and its commit header is longer than ${MAX_HEADER_LENGTH} characters. Shorten the commit header, or add another commit.`,
+                );
+              }
               throw new Error(
                 `Pull request has only one commit and it's not semantic; this may lead to a non-semantic commit in the base branch (see https://github.com/community/community/discussions/16271 ). Amend the commit message to match the pull request title, or add another commit.`,
               );
             }
 
             if (validateSingleCommitMatchesPrTitle) {
-              const commitTitle = nonMergeCommits[0].commit.message.split('\n')[0];
+              // The same header that validation read, so blank leading lines do not count.
+              const commitTitle = headerOf(nonMergeCommits[0].commit.message);
               if (commitTitle !== pullRequest.title) {
                 throw new Error(
                   `The pull request has only one (non-merge) commit and in this case Github will use it as the default commit message when merging. The pull request title doesn't match the commit though ("${pullRequest.title}" vs. "${commitTitle}"). Please update the pull request title accordingly to avoid surprises.`,

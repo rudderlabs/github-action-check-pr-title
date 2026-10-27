@@ -22,7 +22,7 @@ function pullRequest(fields) {
 }
 
 // Inputs use the runner's names, e.g. { TYPES: 'fix' } becomes INPUT_TYPES.
-function runAction({ eventName = 'pull_request', payload, inputs = {}, env = {} }) {
+function runAction({ eventName = 'pull_request', payload, inputs = {}, env = {}, timeout }) {
   const dir = mkdtempSync(join(tmpdir(), 'check-pr-title-'));
   const eventPath = join(dir, 'event.json');
   const outputPath = join(dir, 'output');
@@ -36,6 +36,8 @@ function runAction({ eventName = 'pull_request', payload, inputs = {}, env = {} 
     // CI sets ACTION_ENTRY=dist/index.mjs to test the bundle the action runs.
     const child = spawn(process.execPath, [process.env.ACTION_ENTRY ?? 'index.mjs'], {
       cwd: import.meta.dirname,
+      // A hung action is killed, so the test fails instead of waiting for it.
+      timeout,
       env: {
         ...parentEnv,
         GITHUB_EVENT_NAME: eventName,
@@ -165,13 +167,14 @@ describe('with a token, from the GitHub API', () => {
 
   after(() => server.close());
 
-  function runWithApi({ pullRequest: current, commits = [], inputs = {}, env = { GITHUB_TOKEN: 'test-token' } }) {
+  function runWithApi({ pullRequest: current, commits = [], inputs = {}, env = { GITHUB_TOKEN: 'test-token' }, timeout }) {
     api = { pullRequest: current, commits, requests: [] };
     return runAction({
       // The payload title is stale, as when a person retitles and re-runs the job.
       payload: { pull_request: pullRequest({ title: 'stale title' }) },
       inputs: { GITHUBBASEURL: baseUrl, ...inputs },
       env,
+      timeout,
     });
   }
 
@@ -315,6 +318,48 @@ describe('with a token, from the GitHub API', () => {
 
     assert.equal(result.status, 1, result.stdout + result.stderr);
     assert.match(result.stdout, /The pull request title doesn't match the commit though/);
+  });
+
+  test('validates a single commit with a 40 KB body', async () => {
+    const result = await runWithApi({
+      pullRequest: pullRequest({ title: 'fix: done' }),
+      commits: [commit(`fix: done\n\n${'a'.repeat(40 * 1024)}`)],
+      inputs: { VALIDATESINGLECOMMIT: 'true', VALIDATESINGLECOMMITMATCHESPRTITLE: 'true' },
+      timeout: 10_000,
+    });
+
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+  });
+
+  test('matches a single CRLF commit against the pull request title', async () => {
+    const result = await runWithApi({
+      pullRequest: pullRequest({ title: 'fix: done' }),
+      commits: [commit('fix: done\r\n\r\nbody')],
+      inputs: { VALIDATESINGLECOMMIT: 'true', VALIDATESINGLECOMMITMATCHESPRTITLE: 'true' },
+    });
+
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+  });
+
+  test('matches a single commit with a leading blank line against the title', async () => {
+    const result = await runWithApi({
+      pullRequest: pullRequest({ title: 'fix: done' }),
+      commits: [commit('\nfix: done')],
+      inputs: { VALIDATESINGLECOMMIT: 'true', VALIDATESINGLECOMMITMATCHESPRTITLE: 'true' },
+    });
+
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+  });
+
+  test('names the length limit when the single commit header is too long', async () => {
+    const result = await runWithApi({
+      pullRequest: pullRequest({ title: 'fix: done' }),
+      commits: [commit(`fix: ${'a'.repeat(1000)}`)],
+      inputs: { VALIDATESINGLECOMMIT: 'true' },
+    });
+
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(result.stdout, /its commit header is longer than 1000 characters/);
   });
 
   test('ignores the commit when the pull request has two non-merge commits', async () => {
