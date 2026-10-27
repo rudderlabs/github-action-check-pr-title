@@ -98,7 +98,7 @@ permissions:
 
 steps:
   - name: Check PR title
-    uses: rudderlabs/github-action-check-pr-title@<sha> # v2.0.0
+    uses: rudderlabs/github-action-check-pr-title@<sha> # v2.0.2
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     with:
